@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>基于图像识别的考勤系统</title>
+    <!-- 本地引用Layui CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/layui.min.css') }}">
+    <!-- 本地引用Font Awesome CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}">
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        .layui-layout-admin .layui-header {
+            background-color: #009688;
+            color: #fff;
+            line-height: 60px;
+            font-size: 18px;
+            padding-left: 20px;
+            box-sizing: border-box;
+        }
+        .layui-side {
+            background-color: #2F4056;
+        }
+        .layui-side .layui-nav .layui-nav-item > a {
+            color: #fff;
+        }
+        .layui-side .layui-nav .layui-nav-item > a:hover {
+            background-color: #1AB394;
+            color: #fff;
+        }
+        .layui-side .layui-nav .layui-nav-item.layui-this > a {
+            background-color: #1AB394;
+            color: #fff;
+        }
+        .layui-body {
+            padding: 20px;
+        }
+        .layui-card {
+            box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+            border-radius: 8px;
+            background-color: #fff;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+        }
+        #video-element {
+            width: 100%;
+            height: auto;
+            background-color: #000;
+            border-radius: 8px;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+        }
+        #capture-btn {
+            margin-top: 10px;
+        }
+        #result-container {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+    <!-- 引入 face-api.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+</head>
+<body>
+
+<div class="layui-layout layui-layout-admin">
+    <!-- 顶部栏 -->
+    <div class="layui-header">
+        基于图像识别的考勤系统
+    </div>
+
+    <!-- 侧边栏 -->
+    <div class="layui-side">
+        <div class="layui-side-scroll">
+            <ul class="layui-nav layui-nav-tree" lay-filter="sidebar">
+                <li class="layui-nav-item layui-this">
+                    <a href="#"><i class="fas fa-home"></i> 首页</a>
+                </li>
+                <li class="layui-nav-item">
+                    <a href="#"><i class="fas fa-table"></i> 考勤记录</a>
+                </li>
+                <li class="layui-nav-item">
+                    <a href="#"><i class="fas fa-users"></i> 员工管理</a>
+                </li>
+                <li class="layui-nav-item">
+                    <a href="#"><i class="fas fa-cog"></i> 设置</a>
+                </li>
+                <li class="layui-nav-item" style="position: absolute; bottom: 20px; width: 100%;">
+                    <a href="#"><i class="fas fa-sign-out-alt"></i> 退出</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 主体内容 -->
+    <div class="layui-body">
+        <div class="layui-row layui-col-space15">
+            <!-- 图像识别区域 -->
+            <div class="layui-col-md12">
+                <div class="layui-card">
+                    <div class="layui-card-header"><i class="fas fa-camera"></i> 图像识别考勤</div>
+                    <div class="layui-card-body">
+                        <div class="layui-row layui-col-space15" style="align-items: center;">
+                            <div class="layui-col-md8 layui-col-sm12" id="video-container">
+                                <video id="video-element" autoplay></video>
+                                <canvas id="overlay"></canvas>
+                                <button class="layui-btn layui-btn-normal" id="capture-btn"><i class="fas fa-camera-retro"></i> 捕捉图像</button>
+                            </div>
+                            <div class="layui-col-md4 layui-col-sm12" id="result-container">
+                                <h3><i class="fas fa-info-circle"></i> 识别结果：</h3>
+                                <p id="result-text">等待识别...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 员工信息录入 -->
+            <div class="layui-col-md12">
+                <div class="layui-card">
+                    <div class="layui-card-header"><i class="fas fa-user-plus"></i> 员工信息录入</div>
+                    <div class="layui-card-body">
+                        <form class="layui-form" action="">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label"><i class="fas fa-user"></i> 姓名</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="name" required lay-verify="required" placeholder="请输入姓名" autocomplete="off" class="layui-input">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label"><i class="fas fa-id-card"></i> 工号</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="id" required lay-verify="required" placeholder="请输入工号" autocomplete="off" class="layui-input">
+                                </div>
+                            </div>
+                            <!-- 其他员工信息字段 -->
+                            <div class="layui-form-item">
+                                <label class="layui-form-label"><i class="fas fa-image"></i> 照片</label>
+                                <div class="layui-input-block">
+                                    <input type="file" name="photo" accept="image/*" lay-verify="required" class="layui-input">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <div class="layui-input-block">
+                                    <button class="layui-btn layui-btn-primary" lay-submit lay-filter="submitEmployee"><i class="fas fa-save"></i> 提交</button>
+                                    <button type="reset" class="layui-btn layui-btn-danger"><i class="fas fa-redo-alt"></i> 重置</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 考勤记录展示 -->
+            <div class="layui-col-md12">
+                <div class="layui-card">
+                    <div class="layui-card-header"><i class="fas fa-table"></i> 考勤记录</div>
+                    <div class="layui-card-body">
+                        <table class="layui-table" lay-data="{page:true, limit:10}" lay-filter="attendanceTable">
+                            <thead>
+                            <tr>
+                                <th lay-data="{field:'id', sort:true}"><i class="fas fa-id-card"></i> 工号</th>
+                                <th lay-data="{field:'name', sort:true}"><i class="fas fa-user"></i> 姓名</th>
+                                <th lay-data="{field:'date', sort:true}"><i class="fas fa-calendar-alt"></i> 日期</th>
+                                <th lay-data="{field:'time', sort:true}"><i class="fas fa-clock"></i> 时间</th>
+                                <th lay-data="{field:'status', sort:true}"><i class="fas fa-check-circle"></i> 状态</th>
+                            </tr>
+                            </thead>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 报表生成 -->
+            <div class="layui-col-md12">
+                <div class="layui-card">
+                    <div class="layui-card-header"><i class="fas fa-file-alt"></i> 考勤报表</div>
+                    <div class="layui-card-body">
+                        <button class="layui-btn layui-btn-normal" id="generate-report"><i class="fas fa-file-export"></i> 生成报表</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 本地引用Layui JS -->
+<script src="{{ url_for('static', filename='js/layui.min.js') }}"></script>
+<!-- 本地引用Font Awesome JS -->
+<script src="{{ url_for('static', filename='js/all.min.js') }}"></script>
+<script>
+    // 获取DOM元素
+    const video = document.getElementById('video-element');
+    const captureBtn = document.getElementById('capture-btn');
+    const resultText = document.getElementById('result-text');
+    const overlay = document.getElementById('overlay');
+    const overlayCtx = overlay.getContext('2d');
+
+    // 请求摄像头权限并显示视频
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            console.error("无法访问摄像头: ", err);
+            resultText.textContent = "无法访问摄像头。";
+        });
+
+    // 等待人脸检测模型加载
+    document.addEventListener('DOMContentLoaded', async () => {
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/static/models');
+        console.log('人脸检测模型已加载');
+        // 等待视频加载元数据以获取视频尺寸
+        video.addEventListener('loadedmetadata', () => {
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+            startFaceDetection();
+        });
+    });
+
+    // 实时人脸检测
+    async function startFaceDetection() {
+        const displaySize = { width: video.videoWidth, height: video.videoHeight };
+        faceapi.matchDimensions(overlay, displaySize);
+
+        async function detect() {
+            if (!video.paused && !video.ended) {
+                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions());
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+                // 清除之前的绘制
+                overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+                // 绘制检测结果
+                faceapi.draw.drawDetections(overlay, resizedDetections);
+            }
+            requestAnimationFrame(detect);
+        }
+
+        detect();
+    }
+
+    // 捕捉图像并检测人脸
+    captureBtn.addEventListener('click', async () => {
+        // 创建一个canvas元素
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = video.videoWidth;
+        captureCanvas.height = video.videoHeight;
+        const ctx = captureCanvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+
+        // 将canvas图像转换为Data URL
+        const dataURL = captureCanvas.toDataURL('image/png');
+
+        // 使用 face-api.js 进行人脸检测
+        const detections = await faceapi.detectAllFaces(captureCanvas, new faceapi.TinyFaceDetectorOptions());
+
+        if (detections.length > 0) {
+            // 如果检测到人脸
+            alert(`检测到 ${detections.length} 张人脸`);
+            resultText.textContent = `检测到 ${detections.length} 张人脸。准备上传...`;
+
+            // 发送到后端
+            fetch('/mark_attendance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ image: dataURL })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        resultText.textContent = `识别成功: ${data.name}`;
+                    } else {
+                        resultText.textContent = `识别失败: ${data.message}`;
+                    }
+                })
+                .catch(error => {
+                    console.error('错误:', error);
+                    resultText.textContent = "发生错误，请重试。";
+                });
+        } else {
+            // 如果未检测到人脸
+            alert('未检测到人脸，请重试。');
+            resultText.textContent = "未检测到人脸。请确保摄像头对准您的面部。";
+        }
+    });
+</script>
+
+</body>
+</html>
